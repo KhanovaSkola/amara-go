@@ -1,18 +1,19 @@
 package main
 
 import (
-    "../remote"
+	"./db"
+	"./remote"
+	"./structs"
 
 	"container/list"
 	"database/sql"
-	"encoding/json"
+    "encoding/json"
 	"flag"
 	"fmt"
-	_ "github.com/lib/pq"
 	"github.com/lib/pq/hstore"
 	"log"
 	"net/http"
-	"strconv"
+    "strconv"
 	"time"
 )
 
@@ -21,7 +22,8 @@ var debug bool
 var urls map[string]string
 var client http.Client
 
-func processVideo(row Video, db *sql.DB, c chan int) {
+func processVideo(row structs.Video, c chan int) {
+
 	if debug {
 		fmt.Println("\tProcessing #", row.Id, " ", row.Youtube_id)
 	} else if verbose {
@@ -46,7 +48,7 @@ func processVideo(row Video, db *sql.DB, c chan int) {
 			return
 		}
 
-		var result AmaraResult
+		var result structs.AmaraResult
 		err = json.Unmarshal([]byte(raw), &result)
 		if err != nil {
 			log.Fatal("Failed to parse json:", err)
@@ -58,13 +60,9 @@ func processVideo(row Video, db *sql.DB, c chan int) {
 			} else if verbose {
 				fmt.Print("A")
 			}
-			res, err := db.Query(`UPDATE "1".video SET last_checked = Now(), skip = 't' WHERE id = $1`, row.Id)
+            err = db.SkipVideo(row.Id)
 			if err != nil {
 				log.Fatal("Failed to skip video:", err)
-			}
-			err = res.Close()
-			if err != nil {
-				fmt.Println(err)
 			}
 
 			c <- requests
@@ -72,16 +70,10 @@ func processVideo(row Video, db *sql.DB, c chan int) {
 		}
 
 		amara_id = result.Objects[0].Id
-		res, err := db.Query(`UPDATE "1".video SET amara_id = $1 WHERE id = $2`, amara_id, row.Id)
+        err = db.UpdateVideo(row.Id, amara_id)
 		if err != nil {
 			log.Fatal("Failed to set amara_id:", err)
 		}
-		err = res.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		// fmt.Println("\tamara_id found", amara_id)
 	}
 
 	// get revisions
@@ -94,7 +86,7 @@ func processVideo(row Video, db *sql.DB, c chan int) {
         return
     }
 
-	var result AmaraRevisionsResult
+	var result structs.AmaraRevisionsResult
 	err = json.Unmarshal([]byte(raw), &result)
 	if err != nil {
 		if debug {
@@ -135,7 +127,7 @@ func processVideo(row Video, db *sql.DB, c chan int) {
 			// download subs for this version
 
 			count++
-			go saveSubtitles(row.Id, amara_id, wrapper, revision, db, csubs)
+			go saveSubtitles(row.Id, amara_id, wrapper, revision, csubs)
 		}
 	}
 
@@ -144,25 +136,19 @@ func processVideo(row Video, db *sql.DB, c chan int) {
 		requests += <-csubs
 	}
 
-	res, err := db.Query(`UPDATE "1".video SET last_checked = Now(), revisions = $1 WHERE id = $2`, row.Revisions, row.Id)
+	err = db.UpdateVideoRevisions(row.Id, row.Revisions)
 	if err != nil {
 		log.Fatal("Failed to update video:", err)
 	}
-	err = res.Close()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// fmt.Println(" - v done")
 
 	c <- requests
 }
 
-func saveSubtitles(id int, amara_id string, wrapper AmaraRevisionWrapper, revision AmaraRevision, db *sql.DB, csubs chan int) {
+func saveSubtitles(id int, amara_id string, wrapper structs.AmaraRevisionWrapper, revision structs.AmaraRevision, csubs chan int) {
 	srt, err := remote.Fetch(client, fmt.Sprintf(urls["amaraSrt"], amara_id, wrapper.Language_code, revision.Version_no))
-    if err != nil {
-        log.Fatal(err)
-    }
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	var content hstore.Hstore
 	content.Map = make(map[string]sql.NullString)
@@ -171,38 +157,12 @@ func saveSubtitles(id int, amara_id string, wrapper AmaraRevisionWrapper, revisi
 	content.Map["description"] = sql.NullString{wrapper.Description, true}
 	content.Map["srt"] = sql.NullString{srt, true}
 
-	res, err := db.Query(`INSERT INTO "1".revision (video_id, language, revision, author, published_at, content) VALUES ($1, $2, $3, $4, $5, $6)`, id, wrapper.Language_code, revision.Version_no, revision.Author, nil, content)
+	err = db.AddRevision(id, wrapper.Language_code, revision.Version_no, revision.Author, content)
 	if err != nil {
 		log.Fatal("Failed to save revision:", err)
 	}
-	err = res.Close()
-	if err != nil {
-		fmt.Println(err)
-	}
 
-	csubs <- 1
-}
-
-func fetchVideos(videos *list.List, db *sql.DB, limit int) {
-	fmt.Println("Fetch videos", limit)
-
-	rows, err := db.Query(`SELECT id, youtube_id, amara_id, revisions FROM "1".video WHERE skip = 'f' ORDER BY last_checked ASC NULLS FIRST LIMIT $1`, limit)
-	if err != nil {
-		log.Fatal("Failed to fetch videos:", err)
-	}
-
-	for rows.Next() {
-		var row Video
-		err = rows.Scan(&row.Id, &row.Youtube_id, &row.Amara_id, &row.Revisions)
-		if err != nil {
-			log.Fatal("Failed to fetch row:", err)
-		}
-		videos.PushBack(row)
-	}
-	err = rows.Close()
-	if err != nil {
-		fmt.Println(err)
-	}
+    csubs <- 1
 }
 
 func main() {
@@ -210,12 +170,8 @@ func main() {
 	flag.BoolVar(&debug, "vv", false, "debug mode")
 	flag.Parse()
 
-	db, err := sql.Open("postgres", "user=mikulas dbname=report sslmode=disable")
-	if err != nil {
-		log.Fatal("Failed to connect to postgres:", err)
-	}
+	db.Init("mikulas", "mikulas", "report", 5432)
 	defer db.Close()
-	db.SetMaxOpenConns(500)
 
 	client = http.Client{
 		Timeout: time.Duration(60 * time.Second),
@@ -238,17 +194,19 @@ func main() {
 	for {
 		for count < concurrency {
 			if videos.Len() == 0 {
-                if count != 0 {
-                    elapsed = time.Now().Sub(start)
-                    fmt.Printf("\nrequests %v, per request %v, elapsed %v\n", requests, time.Duration(int(elapsed)/requests), elapsed)
-                }
+				if count != 0 {
+					elapsed = time.Now().Sub(start)
+					fmt.Printf("\nrequests %v, per request %v, elapsed %v\n", requests, time.Duration(int(elapsed)/requests), elapsed)
+				}
 
-				fetchVideos(videos, db, 100000)
+				db.FetchVideos(func(video structs.Video) {
+					videos.PushBack(video)
+				}, 10000)
 			}
 
 			video := videos.Remove(videos.Front())
 			count++
-			go processVideo(video.(Video), db, c)
+            go processVideo(video.(structs.Video), c)
 		}
 
 		requests += <-c
