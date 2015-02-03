@@ -17,6 +17,14 @@ type Revision struct {
 	Amara_id, Language string
 }
 
+type Author struct {
+    Username, FirstName, LastName, Avatar, JoinedAt string
+}
+
+type AmaraAuthor struct {
+    Avatar, First_name, Last_name string
+}
+
 type AmaraMeta struct {
 	Limit, Offset, Total_count int
 }

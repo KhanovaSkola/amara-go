@@ -24,3 +24,16 @@ CREATE TABLE "revision" (
 );
 
 ALTER TABLE "revision" ADD FOREIGN KEY ("video_id") REFERENCES "video" ("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+CREATE TABLE "author" (
+  "id" serial NOT NULL,
+  "username" character varying(255) NOT NULL,
+  "joined_at" date NOT NULL,
+  "first_name" character varying(255) NOT NULL,
+  "last_name" character varying(255) NOT NULL,
+  "avatar" text NOT NULL,
+  PRIMARY KEY ("id")
+);
+ALTER TABLE "author" ADD CONSTRAINT "author_id" PRIMARY KEY ("id");
+
+

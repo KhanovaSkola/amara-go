@@ -65,8 +65,10 @@ func SkipVideo(rowId int) error {
         UPDATE %s.video
         SET last_checked = Now(), skip = 't'
         WHERE id = $1`, rowId)
-	res.Close()
-	return err
+    if err == nil {
+        res.Close()
+    }
+    return err
 }
 
 func UpdateVideo(rowId int, amaraId string) error {
@@ -74,8 +76,10 @@ func UpdateVideo(rowId int, amaraId string) error {
         UPDATE %s.video
         SET amara_id = $1
         WHERE id = $2`, amaraId, rowId)
-	res.Close()
-	return err
+    if err == nil {
+        res.Close()
+    }
+    return err
 }
 
 func UpdateVideoRevisions(rowId int, revisions hstore.Hstore) error {
@@ -83,7 +87,9 @@ func UpdateVideoRevisions(rowId int, revisions hstore.Hstore) error {
         UPDATE %s.video
         SET last_checked = Now(), revisions = $1
         WHERE id = $2`, revisions, rowId)
-	res.Close()
+    if err == nil {
+        res.Close()
+    }
 	return err
 }
 
@@ -91,10 +97,12 @@ func AddRevision(rowId int, lang string, revision int, author string, content hs
 	res, err := query(`
         INSERT INTO %s.revision
         (video_id, language, revision, author, content) VALUES
-        ($1, $2, $3, $4, $5, $6)`,
+        ($1, $2, $3, $4, $5)`,
 		rowId, lang, revision, author, content)
-	res.Close()
-	return err
+    if err == nil {
+        res.Close()
+    }
+    return err
 }
 
 type FetchRevision func(structs.Revision)
@@ -137,4 +145,31 @@ func UpdateRevision(date string, videoId int, lang, revision string) {
 		log.Fatal("Failed to save revision updated_at:", err)
 	}
 	res.Close()
+}
+
+type FetchAuthor func(structs.Author)
+
+func FetchAuthors(fn FetchAuthor, limit int) {
+    rows, err := query(`
+        SELECT DISTINCT r.author
+        FROM %s.revision r
+        LEFT OUTER JOIN %s.author a ON r.author = a.username
+        WHERE a.id IS NULL
+        LIMIT $1`, limit)
+    if err != nil {
+        log.Fatal("Failed to fetch authors: ", err)
+    }
+
+    for rows.Next() {
+        var author structs.Author
+        err = rows.Scan(&author.Username)
+        if err != nil {
+            log.Fatal("Failed to fetch row:", err)
+        }
+        fn(author)
+    }
+    err = rows.Close()
+    if err != nil {
+        fmt.Println(err)
+    }
 }
