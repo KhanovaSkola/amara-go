@@ -1,0 +1,5 @@
+[database]
+user=mikulas
+password=mikulas
+dbname=report
+port=5432

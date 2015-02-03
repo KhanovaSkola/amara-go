@@ -1,27 +1,27 @@
 package main
 
 import (
-    "./app"
+	"./app"
 	"./db"
-    "./out"
+	"./out"
 	"./remote"
 	"./structs"
 
 	"container/list"
 	"database/sql"
-    "encoding/json"
+	"encoding/json"
 	"fmt"
 	"github.com/lib/pq/hstore"
 	"log"
-    "strconv"
+	"strconv"
 	"time"
 )
 
 func processVideo(row structs.Video, c chan int) {
-    out.Debugln("\tProcessing #", row.Id, " ", row.Youtube_id)
-    out.Verbose(".")
+	out.Debugln("\tProcessing #", row.Id, " ", row.Youtube_id)
+	out.Verbose(".")
 
-    requests := 0
+	requests := 0
 
 	// get amara id
 
@@ -47,10 +47,10 @@ func processVideo(row structs.Video, c chan int) {
 		}
 
 		if len(result.Objects) == 0 {
-            out.Debugln("\tamara_id not found")
-            out.Verbose("A")
+			out.Debugln("\tamara_id not found")
+			out.Verbose("A")
 
-            err = db.SkipVideo(row.Id)
+			err = db.SkipVideo(row.Id)
 			if err != nil {
 				log.Fatal("Failed to skip video:", err)
 			}
@@ -60,7 +60,7 @@ func processVideo(row structs.Video, c chan int) {
 		}
 
 		amara_id = result.Objects[0].Id
-        err = db.UpdateVideo(row.Id, amara_id)
+		err = db.UpdateVideo(row.Id, amara_id)
 		if err != nil {
 			log.Fatal("Failed to set amara_id:", err)
 		}
@@ -70,17 +70,17 @@ func processVideo(row structs.Video, c chan int) {
 
 	// fmt.Println("\tgetting revisions")
 	raw, err := remote.Fetch(app.Client, fmt.Sprintf(app.Urls["amaraRevisions"], amara_id))
-    requests++
-    if err != nil {
-        c <- requests
-        return
-    }
+	requests++
+	if err != nil {
+		c <- requests
+		return
+	}
 
 	var result structs.AmaraRevisionsResult
 	err = json.Unmarshal([]byte(raw), &result)
 	if err != nil {
-        out.Debugln("Failed to parse revisions json, will retry next batch")
-        out.Verbose("F")
+		out.Debugln("Failed to parse revisions json, will retry next batch")
+		out.Verbose("F")
 
 		c <- requests
 		return
@@ -149,14 +149,14 @@ func saveSubtitles(id int, amara_id string, wrapper structs.AmaraRevisionWrapper
 		log.Fatal("Failed to save revision:", err)
 	}
 
-    csubs <- 1
+	csubs <- 1
 }
 
 func main() {
 	app.Init()
-    defer db.Close()
+	defer db.Close()
 
-    videos := list.New()
+	videos := list.New()
 	c := make(chan int)
 	concurrency := 100
 	count := 0
@@ -179,7 +179,7 @@ func main() {
 
 			video := videos.Remove(videos.Front())
 			count++
-            go processVideo(video.(structs.Video), c)
+			go processVideo(video.(structs.Video), c)
 		}
 
 		requests += <-c

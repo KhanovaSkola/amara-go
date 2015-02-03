@@ -5,6 +5,8 @@ import (
     "net/http"
     "flag"
     "time"
+    "code.google.com/p/gcfg"
+    "log"
 )
 
 var Verbose bool
@@ -12,6 +14,13 @@ var Debug bool
 
 var Urls map[string]string
 var Client http.Client
+
+type Config struct {
+    Database struct {
+        User, Password, Dbname string
+        Port int
+    }
+}
 
 func Init() {
     Urls = map[string]string{
@@ -26,7 +35,12 @@ func Init() {
     flag.BoolVar(&Debug, "vv", false, "debug mode")
     flag.Parse()
 
-    db.Init("mikulas", "mikulas", "report", 5432)
+    var cfg Config
+    err := gcfg.ReadFileInto(&cfg, "config.gcfg")
+    if err != nil {
+        log.Fatal(err)
+    }
+    db.Init(cfg.Database.User, cfg.Database.Password, cfg.Database.Dbname, cfg.Database.Port)
 
     Client = http.Client{
         Timeout: time.Duration(60 * time.Second),
