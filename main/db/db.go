@@ -7,6 +7,7 @@ import (
     "fmt"
     "log"
     "../structs"
+    "strings"
 )
 
 const schema = `"1"`
@@ -27,9 +28,8 @@ func Close() {
 }
 
 func query(format string, args ...interface {}) (*sql.Rows, error) {
-    query := fmt.Sprintf(format, schema)
-//    fmt.Println("Query:", query)
-    return Conn.Query(query, args...)
+    statement := strings.Replace(format, "%s", schema, -1)
+    return Conn.Query(statement, args...)
 }
 
 type FetchVideo func(structs.Video)
@@ -37,7 +37,7 @@ type FetchVideo func(structs.Video)
 func FetchVideos(fn FetchVideo, limit int) {
     rows, err := query(`
         SELECT id, youtube_id, amara_id, revisions
-        FROM %v.video
+        FROM %s.video
         WHERE skip = 'f'
         ORDER BY last_checked ASC NULLS FIRST
         LIMIT $1`, limit)
@@ -61,7 +61,7 @@ func FetchVideos(fn FetchVideo, limit int) {
 
 func SkipVideo(rowId int) error {
     res, err := query(`
-        UPDATE %v.video
+        UPDATE %s.video
         SET last_checked = Now(), skip = 't'
         WHERE id = $1`, rowId)
     res.Close()
@@ -70,7 +70,7 @@ func SkipVideo(rowId int) error {
 
 func UpdateVideo(rowId int, amaraId string) error {
     res, err := query(`
-        UPDATE %v.video
+        UPDATE %s.video
         SET amara_id = $1
         WHERE id = $2`, amaraId, rowId)
     res.Close()
@@ -79,7 +79,7 @@ func UpdateVideo(rowId int, amaraId string) error {
 
 func UpdateVideoRevisions(rowId int, revisions hstore.Hstore) error {
     res, err := query(`
-        UPDATE %v.video
+        UPDATE %s.video
         SET last_checked = Now(), revisions = $1
         WHERE id = $2`, revisions, rowId)
     res.Close()
@@ -88,7 +88,7 @@ func UpdateVideoRevisions(rowId int, revisions hstore.Hstore) error {
 
 func AddRevision(rowId int, lang string, revision int, author string, content hstore.Hstore) error {
     res, err := query(`
-        INSERT INTO %v.revision
+        INSERT INTO %s.revision
         (video_id, language, revision, author, content) VALUES
         ($1, $2, $3, $4, $5, $6)`,
         rowId, lang, revision, author, content)
@@ -101,8 +101,8 @@ type FetchRevision func(structs.Revision)
 func FetchRevisions(fn FetchRevision, limit int) {
     rows, err := query(`
         SELECT r.language, r.video_id, v.amara_id
-		FROM %v.revision r
-		LEFT JOIN %v.video v ON v.id = r.video_id
+		FROM %s.revision r
+		LEFT JOIN %s.video v ON v.id = r.video_id
 		WHERE published_at IS NULL
 		GROUP BY r.video_id, v.amara_id, r.language
 		LIMIT $1`, limit)
@@ -122,4 +122,18 @@ func FetchRevisions(fn FetchRevision, limit int) {
     if err != nil {
         fmt.Println(err)
     }
+}
+
+func UpdateRevision(date string, videoId int, lang, revision string) {
+    res, err := query(`
+        UPDATE %s.revision
+        SET published_at=$1
+        WHERE video_id=$2
+            AND language=$3
+            AND revision=$4
+    `, date, videoId, lang, revision)
+    if err != nil {
+        log.Fatal("Failed to save revision updated_at:", err)
+    }
+    res.Close()
 }

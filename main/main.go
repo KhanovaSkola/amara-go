@@ -154,6 +154,7 @@ func saveSubtitles(id int, amara_id string, wrapper structs.AmaraRevisionWrapper
 
 func main() {
 	app.Init()
+    defer db.Close()
 
     videos := list.New()
 	c := make(chan int)
