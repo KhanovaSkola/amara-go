@@ -1,35 +1,27 @@
 package main
 
 import (
+    "./app"
 	"./db"
+    "./out"
 	"./remote"
 	"./structs"
 
 	"container/list"
 	"database/sql"
     "encoding/json"
-	"flag"
 	"fmt"
 	"github.com/lib/pq/hstore"
 	"log"
-	"net/http"
     "strconv"
 	"time"
 )
 
-var verbose bool
-var debug bool
-var urls map[string]string
-var client http.Client
-
 func processVideo(row structs.Video, c chan int) {
+    out.Debugln("\tProcessing #", row.Id, " ", row.Youtube_id)
+    out.Verbose(".")
 
-	if debug {
-		fmt.Println("\tProcessing #", row.Id, " ", row.Youtube_id)
-	} else if verbose {
-		fmt.Print(".")
-	}
-	requests := 0
+    requests := 0
 
 	// get amara id
 
@@ -39,7 +31,7 @@ func processVideo(row structs.Video, c chan int) {
 	} else {
 		// fmt.Println("\tupdating amara_id")
 
-		raw, err := remote.Fetch(client, fmt.Sprintf(urls["amaraId"], row.Youtube_id))
+		raw, err := remote.Fetch(app.Client, fmt.Sprintf(app.Urls["amaraId"], row.Youtube_id))
 		requests++
 		if err != nil {
 			fmt.Println("\tfailed to fetch, will retry next bach")
@@ -55,11 +47,9 @@ func processVideo(row structs.Video, c chan int) {
 		}
 
 		if len(result.Objects) == 0 {
-			if debug {
-				fmt.Println("\tamara_id not found")
-			} else if verbose {
-				fmt.Print("A")
-			}
+            out.Debugln("\tamara_id not found")
+            out.Verbose("A")
+
             err = db.SkipVideo(row.Id)
 			if err != nil {
 				log.Fatal("Failed to skip video:", err)
@@ -79,7 +69,7 @@ func processVideo(row structs.Video, c chan int) {
 	// get revisions
 
 	// fmt.Println("\tgetting revisions")
-	raw, err := remote.Fetch(client, fmt.Sprintf(urls["amaraRevisions"], amara_id))
+	raw, err := remote.Fetch(app.Client, fmt.Sprintf(app.Urls["amaraRevisions"], amara_id))
     requests++
     if err != nil {
         c <- requests
@@ -89,11 +79,8 @@ func processVideo(row structs.Video, c chan int) {
 	var result structs.AmaraRevisionsResult
 	err = json.Unmarshal([]byte(raw), &result)
 	if err != nil {
-		if debug {
-			fmt.Println("Failed to parse revisions json, will retry next batch")
-		} else if verbose {
-			fmt.Print("F")
-		}
+        out.Debugln("Failed to parse revisions json, will retry next batch")
+        out.Verbose("F")
 
 		c <- requests
 		return
@@ -145,7 +132,7 @@ func processVideo(row structs.Video, c chan int) {
 }
 
 func saveSubtitles(id int, amara_id string, wrapper structs.AmaraRevisionWrapper, revision structs.AmaraRevision, csubs chan int) {
-	srt, err := remote.Fetch(client, fmt.Sprintf(urls["amaraSrt"], amara_id, wrapper.Language_code, revision.Version_no))
+	srt, err := remote.Fetch(app.Client, fmt.Sprintf(app.Urls["amaraSrt"], amara_id, wrapper.Language_code, revision.Version_no))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -166,24 +153,9 @@ func saveSubtitles(id int, amara_id string, wrapper structs.AmaraRevisionWrapper
 }
 
 func main() {
-	flag.BoolVar(&verbose, "v", false, "verbose mode")
-	flag.BoolVar(&debug, "vv", false, "debug mode")
-	flag.Parse()
+	app.Init()
 
-	db.Init("mikulas", "mikulas", "report", 5432)
-	defer db.Close()
-
-	client = http.Client{
-		Timeout: time.Duration(60 * time.Second),
-	}
-
-	urls = map[string]string{
-		"amaraId":        "https://www.amara.org/api2/partners/videos/?format=json&video_url=http%%3A%%2F%%2Fwww.youtube.com%%2Fwatch%%3Fv%%3D%v",
-		"amaraRevisions": "http://www.amara.org/api2/partners/videos/%v/languages/?limit=120&format=json",
-		"amaraSrt":       "http://www.amara.org/api2/partners/videos/%v/languages/%v/subtitles?format=srt&version=%v",
-	}
-
-	videos := list.New()
+    videos := list.New()
 	c := make(chan int)
 	concurrency := 100
 	count := 0

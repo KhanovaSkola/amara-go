@@ -12,6 +12,11 @@ type Video struct {
     Revisions  hstore.Hstore
 }
 
+type Revision struct {
+    Id, Video_id       int
+    Amara_id, Language string
+}
+
 type AmaraMeta struct {
     Limit, Offset, Total_count int
 }

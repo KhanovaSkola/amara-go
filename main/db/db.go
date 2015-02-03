@@ -26,15 +26,15 @@ func Close() {
     Conn.Close()
 }
 
-type FetchRow func(structs.Video)
-
 func query(format string, args ...interface {}) (*sql.Rows, error) {
     query := fmt.Sprintf(format, schema)
 //    fmt.Println("Query:", query)
     return Conn.Query(query, args...)
 }
 
-func FetchVideos(fn FetchRow, limit int) {
+type FetchVideo func(structs.Video)
+
+func FetchVideos(fn FetchVideo, limit int) {
     rows, err := query(`
         SELECT id, youtube_id, amara_id, revisions
         FROM %v.video
@@ -94,4 +94,32 @@ func AddRevision(rowId int, lang string, revision int, author string, content hs
         rowId, lang, revision, author, content)
     res.Close()
     return err
+}
+
+type FetchRevision func(structs.Revision)
+
+func FetchRevisions(fn FetchRevision, limit int) {
+    rows, err := query(`
+        SELECT r.language, r.video_id, v.amara_id
+		FROM %v.revision r
+		LEFT JOIN %v.video v ON v.id = r.video_id
+		WHERE published_at IS NULL
+		GROUP BY r.video_id, v.amara_id, r.language
+		LIMIT $1`, limit)
+    if err != nil {
+        log.Fatal("Failed to fetch videos: ", err)
+    }
+
+    for rows.Next() {
+        var revision structs.Revision
+        err = rows.Scan(&revision.Language, &revision.Video_id, &revision.Amara_id)
+        if err != nil {
+            log.Fatal("Failed to fetch row:", err)
+        }
+        fn(revision)
+    }
+    err = rows.Close()
+    if err != nil {
+        fmt.Println(err)
+    }
 }
