@@ -18,7 +18,8 @@ type Revision struct {
 }
 
 type Author struct {
-    Username, FirstName, LastName, Avatar, JoinedAt string
+    Username, FirstName, LastName, Avatar string
+    JoinedAt sql.NullString
 }
 
 type AmaraAuthor struct {

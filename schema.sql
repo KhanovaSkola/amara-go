@@ -28,7 +28,7 @@ ALTER TABLE "revision" ADD FOREIGN KEY ("video_id") REFERENCES "video" ("id") ON
 CREATE TABLE "author" (
   "id" serial NOT NULL,
   "username" character varying(255) NOT NULL,
-  "joined_at" date NOT NULL,
+  "joined_at" date NULL,
   "first_name" character varying(255) NOT NULL,
   "last_name" character varying(255) NOT NULL,
   "avatar" text NOT NULL,

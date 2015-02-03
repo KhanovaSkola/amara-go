@@ -83,8 +83,10 @@ func main() {
 	for {
 		for count < concurrency {
 			if revisions.Len() == 0 {
-				elapsed = time.Now().Sub(start)
-				fmt.Printf("\nrequests %v, per request %v, elapsed %v\n", requests, time.Duration(int(elapsed)/requests), elapsed)
+                if count != 0 {
+                    elapsed = time.Now().Sub(start)
+                    fmt.Printf("\nrequests %v, per request %v, elapsed %v\n", requests, time.Duration(int(elapsed)/requests), elapsed)
+                }
 
 				db.FetchRevisions(func(revision structs.Revision) {
 					revisions.PushBack(revision)

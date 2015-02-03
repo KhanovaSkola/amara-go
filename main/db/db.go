@@ -173,3 +173,15 @@ func FetchAuthors(fn FetchAuthor, limit int) {
         fmt.Println(err)
     }
 }
+
+func AddAuthor(a structs.Author) {
+    res, err := query(`
+        INSERT INTO %s.author
+        (username, joined_at, first_name, last_name, avatar) VALUES
+        ($1, $2, $3, $4, $5)`,
+    a.Username, a.JoinedAt, a.FirstName, a.LastName, a.Avatar)
+    if err != nil {
+        log.Fatal(err)
+    }
+    res.Close()
+}
